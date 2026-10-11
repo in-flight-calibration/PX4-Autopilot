@@ -34,7 +34,23 @@ param set-default SIH_F_DIA_INCH 8
 param set-default SIH_F_RPM_MAX 13000
 
 param set-default SIH_VEHICLE_TYPE 1 # sih as fixed wing
-param set-default RWTO_TKOFF 1 # enable takeoff from runway (as opposed to launched)
+
+param set-default SIH_LOC_LAT0 47.397742
+param set-default SIH_LOC_LON0 8.545594
+param set-default SIH_LOC_H0 489.4
+param set-default SIH_LOC_ROLL0 0.0
+param set-default SIH_LOC_PITCH0 0.5236
+param set-default SIH_LOC_YAW0 0.0
+param set-default SIH_BOOST_FORCE 8.0
+param set-default SIH_BOOST_TIME 5.0
+
+param set-default FW_AIRSPD_MAX 20.0
+param set-default FW_AIRSPD_MIN 15.0
+param set-default FW_AIRSPD_STALL 12.0
+param set-default FW_AIRSPD_TRIM 18.0
+param set-default FW_LAUN_DETCN_ON 1
+param set-default FW_LAUN_AC_THLD 15.0
+param set-default MIS_TAKEOFF_ALT 75.0
 
 # 13000 RPM gives ~11 N of thrust at trim airspeed, which is a 30 deg climb at
 # trim and 20 m/s in level flight. Raise the climb rate so TECS

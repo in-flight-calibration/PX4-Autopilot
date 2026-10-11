@@ -83,6 +83,7 @@
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_global_position.h>
 #include <uORB/topics/vehicle_local_position.h>
+#include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/ranging_beacon.h>
 
 #if defined(ENABLE_LOCKSTEP_SCHEDULER)
@@ -145,6 +146,7 @@ private:
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 	uORB::Subscription _actuator_out_sub{ORB_ID(actuator_outputs_sim)};
+	uORB::SubscriptionData<vehicle_status_s> _vehicle_status_sub{ORB_ID(vehicle_status)};
 	failure_injection::Config _failure_config;
 
 	bool _airspeed_blocked{false};
@@ -205,6 +207,7 @@ private:
 	void send_dist_snsr(const hrt_abstime &time_now_us);
 	void send_ranging_beacon(const hrt_abstime &time_now_us);
 	void publish_ground_truth(const hrt_abstime &time_now_us);
+	void update_booster();
 	void generate_fw_aerodynamics(const float roll_cmd, const float pitch_cmd, const float yaw_cmd, const float thrust_for_prowash);
 	void generate_ts_aerodynamics();
 	void generate_rover_ackermann_dynamics(const float throttle_cmd, const float steering_cmd, const float dt);
@@ -268,6 +271,7 @@ private:
 	float       _T[NUM_DYN_THRUSTER] {};         // thruster forces (N)
 	float       _Q[NUM_DYN_THRUSTER] {};         // thruster torque (Nm)
 	Thruster    _thruster[NUM_DYN_THRUSTER] {};	// thruster objects
+	Booster	    _booster {};
 
 	enum class VehicleType {Quadcopter, FixedWing, TailsitterVTOL, StandardVTOL, Hexacopter, RoverAckermann, First = Quadcopter, Last = RoverAckermann}; // numbering dependent on parameter SIH_VEHICLE_TYPE
 	VehicleType _vehicle = VehicleType::Quadcopter;
@@ -335,11 +339,19 @@ private:
 		(ParamFloat<px4::params::SIH_LOC_LAT0>) _sih_lat0,
 		(ParamFloat<px4::params::SIH_LOC_LON0>) _sih_lon0,
 		(ParamFloat<px4::params::SIH_LOC_H0>) _sih_h0,
+		(ParamFloat<px4::params::SIH_LOC_ROLL0>) _sih_roll0,
+		(ParamFloat<px4::params::SIH_LOC_PITCH0>) _sih_pitch0,
 		(ParamFloat<px4::params::SIH_LOC_YAW0>) _sih_yaw0,
 		(ParamFloat<px4::params::SIH_DISTSNSR_MIN>) _sih_distance_snsr_min,
 		(ParamFloat<px4::params::SIH_DISTSNSR_MAX>) _sih_distance_snsr_max,
 		(ParamFloat<px4::params::SIH_DISTSNSR_OVR>) _sih_distance_snsr_override,
 		(ParamFloat<px4::params::SIH_T_TAU>) _sih_thrust_tau,
+		(ParamInt<px4::params::BAT1_SOURCE>) _bat1_source,
+		(ParamInt<px4::params::SIH_VEHICLE_TYPE>) _sih_vtype,
+		(ParamFloat<px4::params::SIH_WIND_N>) _sih_wind_n,
+		(ParamFloat<px4::params::SIH_WIND_E>) _sih_wind_e,
+		(ParamFloat<px4::params::SIH_RNGBC_NOISE>) _sih_ranging_beacon_noise,
+
 		// forward propeller
 		(ParamFloat<px4::params::SIH_F_T_MAX>) _sih_f_thrust_max,
 		(ParamFloat<px4::params::SIH_F_Q_MAX>) _sih_f_torque_max,
@@ -351,10 +363,9 @@ private:
 		(ParamFloat<px4::params::SIH_F_CP2>) _sih_f_cp2,
 		(ParamFloat<px4::params::SIH_F_DIA_INCH>) _sih_forward_diameter_inch,
 		(ParamFloat<px4::params::SIH_F_RPM_MAX>) _sih_forward_rpm_max,
-		(ParamInt<px4::params::BAT1_SOURCE>) _bat1_source,
-		(ParamInt<px4::params::SIH_VEHICLE_TYPE>) _sih_vtype,
-		(ParamFloat<px4::params::SIH_WIND_N>) _sih_wind_n,
-		(ParamFloat<px4::params::SIH_WIND_E>) _sih_wind_e,
-		(ParamFloat<px4::params::SIH_RNGBC_NOISE>) _sih_ranging_beacon_noise
+
+		// booster parameters
+		(ParamFloat<px4::params::SIH_BOOST_FORCE>) _sih_boost_force,
+		(ParamFloat<px4::params::SIH_BOOST_TIME>) _sih_boost_time
 	)
 };

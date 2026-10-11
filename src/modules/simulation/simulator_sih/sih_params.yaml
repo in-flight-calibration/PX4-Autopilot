@@ -215,6 +215,30 @@ parameters:
       max: 8848.0
       decimal: 2
       increment: 0.01
+    SIH_LOC_ROLL0:
+      description:
+        short: Initial roll of the simulated vehicle
+        long: |-
+          This value represents the initial roll of the simulated vehicle at the start of the simulation.
+      type: float
+      default: 0.0
+      unit: rad
+      min: -3.14159
+      max: 3.14159
+      decimal: 3
+      increment: 0.01
+    SIH_LOC_PITCH0:
+      description:
+        short: Initial pitch of the simulated vehicle
+        long: |-
+          This value represents the initial pitch of the simulated vehicle at the start of the simulation.
+      type: float
+      default: 0.0
+      unit: rad
+      min: -1.5708
+      max: 1.5708
+      decimal: 3
+      increment: 0.01
     SIH_LOC_YAW0:
       description:
         short: Initial heading (yaw) of the simulated vehicle
@@ -381,3 +405,19 @@ parameters:
       default: 6000.0
       min: 0.1
       decimal: 1
+    SIH_BOOST_FORCE:
+      description:
+        short: Booster force (N)
+      type: float
+      default: 0.0
+      unit: N
+      min: 0.0
+      decimal: 2
+    SIH_BOOST_TIME:
+      description:
+        short: Booster active time (s)
+      type: float
+      default: 0.0
+      unit: s
+      min: 0.0
+      decimal: 2

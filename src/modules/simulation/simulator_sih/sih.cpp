@@ -251,6 +251,7 @@ void Sih::sensor_step()
 	const float dt = (now - _last_run) * 1e-6f;
 	_last_run = now;
 
+	_vehicle_status_sub.update();
 	read_motors(dt);
 
 	generate_force_and_torques(dt);
@@ -325,6 +326,8 @@ void Sih::parameters_updated()
 		}
 	}
 
+	_booster = Booster(_sih_boost_force.get(), _sih_boost_time.get());
+
 	if (!_lpos_ref.isInitialized()
 	    || (fabsf(static_cast<float>(_lpos_ref.getProjectionReferenceLat()) - _sih_lat0.get()) > FLT_EPSILON)
 	    || (fabsf(static_cast<float>(_lpos_ref.getProjectionReferenceLon()) - _sih_lon0.get()) > FLT_EPSILON)
@@ -341,7 +344,7 @@ void Sih::parameters_updated()
 		const Dcmf R_E2N = _lla.computeRotEcefToNed();
 		_R_N2E = R_E2N.transpose();
 		_v_E = _R_N2E * _v_N;
-		_q = Quatf(Eulerf(0.f, 0.f, _sih_yaw0.get()));
+		_q = Quatf(Eulerf(_sih_roll0.get(), _sih_pitch0.get(), _sih_yaw0.get()));
 		_q_E = Quatf(_R_N2E) * _q;
 		_q_E.normalize();
 	}
@@ -486,9 +489,10 @@ void Sih::generate_force_and_torques(const float dt)
 		_Ma_B = -_KDW * _w_B; // first order angular damper
 
 	} else if (_vehicle == VehicleType::FixedWing) {
-
+		const bool armed = _vehicle_status_sub.get().arming_state == vehicle_status_s::ARMING_STATE_ARMED;
 		_T[0] = _thruster[0].compute_thrust_from_throttle(_u[3], _v_B(0));
 		_Q[0] = _thruster[0].compute_torque_from_throttle(_u[3], _v_B(0));
+		_T[0] += _booster.update(dt, armed);
 		_T_B = Vector3f(_T[0], 0.0f, 0.0f); 	// forward thruster
 		_Mt_B = Vector3f(_Q[0], 0.0f, 0.0f);	// thruster torque
 		generate_fw_aerodynamics(_u[0], _u[1], _u[2], _T[0]);

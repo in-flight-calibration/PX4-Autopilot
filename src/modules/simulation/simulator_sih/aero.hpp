@@ -303,6 +303,59 @@ public:
 	}
 };
 
+class Booster
+{
+public:
+	Booster(float boost_force = -1.0f, float boost_time = -1.0f)
+		: _boost_force{boost_force}, _boost_time{boost_time} {}
+
+	float update(float dt, bool armed)
+	{
+		if (_boost_time <= 0.0f || _boost_force <= 0.0f) {
+			return 0.0f;
+		}
+
+		switch (_state) {
+		case State::WAITING_FOR_IGNITION:
+			if (armed) {
+				_timer += dt;
+			} else {
+				_timer = 0.0f;
+			}
+
+			if (_timer > 3.0f) {
+				_timer = 0.0f;
+				_state = State::BOOSTING;
+			}
+
+			return 0.0f;
+		case State::BOOSTING:
+			_timer += dt;
+
+			if (_timer > _boost_time) {
+				_state = State::BURNED_OUT;
+			}
+
+			return _boost_force;
+		case State::BURNED_OUT:
+		default:
+			return 0.0f;
+		}
+	}
+
+private:
+	float _boost_force{0.0f};
+	float _boost_time{0.0f};
+
+	enum class State {
+		WAITING_FOR_IGNITION,
+		BOOSTING,
+		BURNED_OUT
+	} _state;
+
+	float _timer{0.0f};
+};
+
 // class Aerodynamic Segment ------------------------------------------------------------------------
 class AeroSeg
 {
