@@ -20,7 +20,7 @@ const char* default_pub_config =
 @[    for pub in publications]@
 	"@(pub['topic']);@(pub['topic_simple']);0@[if pub.get('pub_options_str')];@(pub['pub_options_str'])@[end if]\n"
 @[    end for]@
-;
+"";
 
 const char* default_sub_config =
 @[    for sub in subscriptions]@
@@ -29,4 +29,4 @@ const char* default_sub_config =
 @[    for sub in subscriptions_multi]@
 	"@(sub['topic']);@(sub['topic_simple']);-1\n"
 @[    end for]@
-;
+"";

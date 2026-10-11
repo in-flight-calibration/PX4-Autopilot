@@ -86,14 +86,18 @@ if(CONFIG_ZENOH_SERIAL)
     target_compile_options(zenohpico_static PRIVATE -DZ_LINK_SERIAL)
 endif()
 
+if(NOT DEFINED DDS_TOPICS_FILE)
+    set(DDS_TOPICS_FILE dds_topics.yaml)
+endif()
+
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/default_topics.c
 COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../uxrce_dds_client/generate_dds_topics.py
 	--client-outdir ${CMAKE_CURRENT_BINARY_DIR}
-	--dds-topics-file ${CMAKE_CURRENT_SOURCE_DIR}/dds_topics.yaml
+	--dds-topics-file ${CMAKE_CURRENT_SOURCE_DIR}/${DDS_TOPICS_FILE}
 	--template_file ${CMAKE_CURRENT_SOURCE_DIR}/default_topics.c.em
 DEPENDS
 	${CMAKE_CURRENT_SOURCE_DIR}/../uxrce_dds_client/generate_dds_topics.py
-	${CMAKE_CURRENT_SOURCE_DIR}/dds_topics.yaml
+	${CMAKE_CURRENT_SOURCE_DIR}/${DDS_TOPICS_FILE}
 	${CMAKE_CURRENT_SOURCE_DIR}/default_topics.c.em
 COMMENT "Generating Default config"
 )
