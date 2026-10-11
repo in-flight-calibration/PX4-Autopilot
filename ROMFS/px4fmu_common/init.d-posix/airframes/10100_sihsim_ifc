@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. ${R}etc/init.d-posix/airframes/10041_sihsim_airplane
+PX4_SIM_MODEL=${PX4_SIM_MODEL:=ifc}
+
+param set-default RWTO_TKOFF 0
+param set-default SIH_LOC_LAT0 47.397742
+param set-default SIH_LOC_LON0 8.545594
+param set-default SIH_LOC_H0 489.4
+param set-default SIH_LOC_ROLL0 0.0
+param set-default SIH_LOC_PITCH0 0.5236
+param set-default SIH_LOC_YAW0 0.0
+param set-default SIH_BOOST_FORCE 8.0
+param set-default SIH_BOOST_TIME 5.0
+
+param set-default FW_AIRSPD_MAX 20.0
+param set-default FW_AIRSPD_MIN 15.0
+param set-default FW_AIRSPD_STALL 12.0
+param set-default FW_AIRSPD_TRIM 18.0
+param set-default FW_LAUN_DETCN_ON 1
+param set-default FW_LAUN_AC_THLD 15.0
+param set-default MIS_TAKEOFF_ALT 75.0
+
+param set-default ZENOH_ENABLE 1
