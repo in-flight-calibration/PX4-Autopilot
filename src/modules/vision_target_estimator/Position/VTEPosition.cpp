@@ -388,56 +388,14 @@ bool VTEPosition::isVisionDataValid(const fiducial_marker_pos_report_s &fiducial
 	return true;
 }
 
-bool VTEPosition::isUavGpsPositionValid()
-{
-	if (!isMeasRecent(_uav_gps_position.timestamp)) {
-		return false;
-	}
-
-	if (!isLatLonAltValid(_uav_gps_position.lat_deg, _uav_gps_position.lon_deg,
-			      _uav_gps_position.alt_m, "UAV GPS ", &_uav_gps_pos_warn_last)) {
-		return false;
-	}
-
-	if (_gps_pos_is_offset && !_gps_pos_offset_ned.valid) {
-		PX4_DEBUG("Uav Gps position invalid offset!"); // Debug because this message can spam
-		return false;
-	}
-
-	return true;
-}
-
-bool VTEPosition::isUavGpsVelocityValid()
-{
-	// Check freshness first to early-out on stale samples before touching the payload.
-	if (!isMeasRecent(_uav_gps_vel.timestamp)) {
-		return false;
-	}
-
-	if (!_uav_gps_vel.xyz.isAllFinite()) {
-		if (shouldEmitWarning(_uav_gps_vel_warn_last)) {
-			PX4_WARN("UAV GPS velocity not finite! vx: %.1f, vy: %.1f, vz: %.1f",
-				 (double)_uav_gps_vel.xyz(vtest::Axis::x), (double)_uav_gps_vel.xyz(vtest::Axis::y),
-				 (double)_uav_gps_vel.xyz(vtest::Axis::z));
-		}
-
-		return false;
-	}
-
-	if (_gps_pos_is_offset && !_velocity_offset_ned.valid) {
-		PX4_DEBUG("Uav Gps velocity invalid offset!");
-		return false;
-	}
-
-	return true;
-}
-
 bool VTEPosition::updateUavGnssData()
 {
 	vehicle_gnss_s vehicle_gnss;
 	const bool vehicle_gnss_updated = _vehicle_gnss_sub.update(&vehicle_gnss);
 
 	if (vehicle_gnss_updated) {
+		const bool sample_usable = vehicle_gnss.usable && isMeasRecent(vehicle_gnss.timestamp_sample);
+
 		// Position
 		_uav_gps_position.lat_deg = vehicle_gnss.receiver.latitude;
 		_uav_gps_position.lon_deg = vehicle_gnss.receiver.longitude;
@@ -445,7 +403,12 @@ bool VTEPosition::updateUavGnssData()
 		_uav_gps_position.timestamp = vehicle_gnss.timestamp_sample;
 		_uav_gps_position.eph = vehicle_gnss.receiver.eph;
 		_uav_gps_position.epv = vehicle_gnss.receiver.epv;
-		_uav_gps_position.valid = isUavGpsPositionValid();
+		_uav_gps_position.valid = sample_usable
+					  && PX4_ISFINITE(_uav_gps_position.eph) && _uav_gps_position.eph >= 0.f
+					  && PX4_ISFINITE(_uav_gps_position.epv) && _uav_gps_position.epv >= 0.f
+					  && isLatLonAltValid(_uav_gps_position.lat_deg, _uav_gps_position.lon_deg,
+							  _uav_gps_position.alt_m, "UAV GPS ", &_uav_gps_pos_warn_last)
+					  && (!_gps_pos_is_offset || _gps_pos_offset_ned.valid);
 
 		// Velocity
 		_uav_gps_vel.timestamp = vehicle_gnss.timestamp_sample;
@@ -453,7 +416,19 @@ bool VTEPosition::updateUavGnssData()
 		_uav_gps_vel.xyz(vtest::Axis::y) = vehicle_gnss.receiver.vel_east;
 		_uav_gps_vel.xyz(vtest::Axis::z) = vehicle_gnss.receiver.vel_down;
 		_uav_gps_vel.uncertainty = vehicle_gnss.receiver.speed_accuracy;
-		_uav_gps_vel.valid = vehicle_gnss.receiver.vel_ned_valid && isUavGpsVelocityValid();
+		_uav_gps_vel.valid = sample_usable && vehicle_gnss.receiver.vel_ned_valid
+				     && PX4_ISFINITE(_uav_gps_vel.uncertainty) && _uav_gps_vel.uncertainty >= 0.f
+				     && (!_gps_pos_is_offset || _velocity_offset_ned.valid);
+
+		if (_uav_gps_vel.valid && !_uav_gps_vel.xyz.isAllFinite()) {
+			if (shouldEmitWarning(_uav_gps_vel_warn_last)) {
+				PX4_WARN("UAV GPS velocity not finite! vx: %.1f, vy: %.1f, vz: %.1f",
+					 (double)_uav_gps_vel.xyz(vtest::Axis::x), (double)_uav_gps_vel.xyz(vtest::Axis::y),
+					 (double)_uav_gps_vel.xyz(vtest::Axis::z));
+			}
+
+			_uav_gps_vel.valid = false;
+		}
 
 	} else {
 		// Check if stored data is still valid
@@ -516,12 +491,19 @@ bool VTEPosition::initializeEstimator(const ObsValidMaskU &fusion_mask,
 		return false;
 	}
 
-	if (!hasInitialVelocityEstimate()) {
-		if (shouldEmitWarning(_init_vel_warn_last)) {
-			PX4_WARN("No UAV velocity estimate. Estimator cannot be started.");
+	// Prefer GNSS velocity corrected to the center of mass, with local velocity as fallback.
+	Vector3f initial_uav_velocity{};
+
+	if (!getOffsetUavVel(_uav_gps_vel.timestamp, initial_uav_velocity)) {
+		if (!_local_velocity.valid || !isMeasRecent(_local_velocity.timestamp)) {
+			if (shouldEmitWarning(_init_vel_warn_last)) {
+				PX4_WARN("No UAV velocity estimate. Estimator cannot be started.");
+			}
+
+			return false;
 		}
 
-		return false;
+		initial_uav_velocity = _local_velocity.xyz;
 	}
 
 	// If both GNSS and vision are available at startup, only keep the GNSS-first
@@ -542,7 +524,7 @@ bool VTEPosition::initializeEstimator(const ObsValidMaskU &fusion_mask,
 	}
 
 	AxisEstimatorStates state_init{};
-	buildInitialStateArray(initial_position, selectInitialUavVelocity(), initial_bias, state_init);
+	buildInitialStateArray(initial_position, initial_uav_velocity, initial_bias, state_init);
 
 	if (!initEstimator(state_init)) {
 		resetFilter();
@@ -560,26 +542,6 @@ bool VTEPosition::initializeEstimator(const ObsValidMaskU &fusion_mask,
 	}
 
 	return true;
-}
-
-bool VTEPosition::hasInitialVelocityEstimate() const
-{
-	return (_local_velocity.valid && isMeasRecent(_local_velocity.timestamp))
-	       || (_uav_gps_vel.valid && isMeasRecent(_uav_gps_vel.timestamp));
-}
-
-Vector3f VTEPosition::selectInitialUavVelocity() const
-{
-	// Prefer GNSS-derived velocity when available; local velocity is a fallback.
-	if (_uav_gps_vel.valid && isMeasRecent(_uav_gps_vel.timestamp)) {
-		return _uav_gps_vel.xyz;
-	}
-
-	if (_local_velocity.valid && isMeasRecent(_local_velocity.timestamp)) {
-		return _local_velocity.xyz;
-	}
-
-	return Vector3f{};
 }
 
 void VTEPosition::selectInitialBiasFromGnss(const TargetObs observations[kObsTypeCount],
@@ -661,7 +623,7 @@ bool VTEPosition::getOffsetUavVel(const hrt_abstime sample_time, Vector3f &uav_v
 
 	if (_gps_pos_is_offset) {
 		if (!_velocity_offset_ned.valid
-		    || !isTimeDifferenceWithin(_velocity_offset_ned.timestamp, _uav_gps_vel.timestamp, _meas_updated_timeout_us)) {
+		    || !isMeasUpdated(_velocity_offset_ned.timestamp)) {
 			return false;
 		}
 
@@ -1080,7 +1042,7 @@ bool VTEPosition::processObsGNSSPosMission(TargetObs &obs)
 	if (_gps_pos_is_offset) {
 
 		if (!_gps_pos_offset_ned.valid
-		    || !isTimeDifferenceWithin(_gps_pos_offset_ned.timestamp, _uav_gps_position.timestamp, _meas_updated_timeout_us)) {
+		    || !isMeasUpdated(_gps_pos_offset_ned.timestamp)) {
 			return false;
 		}
 
@@ -1100,7 +1062,8 @@ bool VTEPosition::processObsGNSSPosMission(TargetObs &obs)
 	}
 
 	// GPS already in NED, no rotation required.
-	// Obs: [pos_rel + bias]
+	// Obs: [pos_rel + bias]. Bias may be initialized later in this update,
+	// so fuseMeas() adds its coefficient to meas_h_xyz when the bias is active.
 	obs.meas_h_xyz(vtest::Axis::x, vtest::State::pos_rel) = 1;
 	obs.meas_h_xyz(vtest::Axis::y, vtest::State::pos_rel) = 1;
 	obs.meas_h_xyz(vtest::Axis::z, vtest::State::pos_rel) = 1;
@@ -1112,12 +1075,6 @@ bool VTEPosition::processObsGNSSPosMission(TargetObs &obs)
 	obs.meas_unc_xyz(vtest::Axis::x) = gps_unc_horizontal;
 	obs.meas_unc_xyz(vtest::Axis::y) = gps_unc_horizontal;
 	obs.meas_unc_xyz(vtest::Axis::z) = gps_unc_vertical;
-
-	if (_bias.set) {
-		obs.meas_h_xyz(vtest::Axis::x, vtest::State::bias) = 1;
-		obs.meas_h_xyz(vtest::Axis::y, vtest::State::bias) = 1;
-		obs.meas_h_xyz(vtest::Axis::z, vtest::State::bias) = 1;
-	}
 
 	obs.type = ObsType::kMissionGpsPos;
 
@@ -1188,7 +1145,7 @@ bool VTEPosition::processObsGNSSPosTarget(const target_gnss_s &target_gnss, Targ
 	// Offset gps relative position to the center of mass:
 	if (_gps_pos_is_offset) {
 		if (!_gps_pos_offset_ned.valid
-		    || !isTimeDifferenceWithin(_gps_pos_offset_ned.timestamp, _uav_gps_position.timestamp, _meas_updated_timeout_us)) {
+		    || !isMeasUpdated(_gps_pos_offset_ned.timestamp)) {
 
 			return false;
 		}
@@ -1216,16 +1173,11 @@ bool VTEPosition::processObsGNSSPosTarget(const target_gnss_s &target_gnss, Targ
 	}
 
 	// GPS already in NED, no rotation required.
-	// Obs: [pos_rel + bias]
+	// Obs: [pos_rel + bias]. Bias may be initialized later in this update,
+	// so fuseMeas() adds its coefficient to meas_h_xyz when the bias is active.
 	obs.meas_h_xyz(vtest::Axis::x, vtest::State::pos_rel) = 1;
 	obs.meas_h_xyz(vtest::Axis::y, vtest::State::pos_rel) = 1;
 	obs.meas_h_xyz(vtest::Axis::z, vtest::State::pos_rel) = 1;
-
-	if (_bias.set) {
-		obs.meas_h_xyz(vtest::Axis::x, vtest::State::bias) = 1;
-		obs.meas_h_xyz(vtest::Axis::y, vtest::State::bias) = 1;
-		obs.meas_h_xyz(vtest::Axis::z, vtest::State::bias) = 1;
-	}
 
 	obs.timestamp = target_gnss.timestamp_sample;
 
@@ -1271,8 +1223,14 @@ bool VTEPosition::fuseMeas(const Vector3f &vehicle_acc_ned, const TargetObs &tar
 			continue; // nothing to do for this axis
 		}
 
-		const KF_position::ScalarMeas meas_input{target_obs.timestamp, target_obs.meas_xyz(j),
-				target_obs.meas_unc_xyz(j), target_obs.meas_h_xyz.row(j)};
+		KF_position::ScalarMeas meas_input{target_obs.timestamp, target_obs.meas_xyz(j),
+						   target_obs.meas_unc_xyz(j), target_obs.meas_h_xyz.row(j)};
+
+		// Bias can become observable after observations were collected in this update.
+		// Build the GNSS model from the state being fused, including on that first cycle.
+		if (_bias.set && (target_obs.type == ObsType::kTargetGpsPos || target_obs.type == ObsType::kMissionGpsPos)) {
+			meas_input.H(vtest::State::bias) = 1.f;
+		}
 
 		target_innov.observation[j] = meas_input.val;
 		target_innov.observation_variance[j] = meas_input.unc;
@@ -1568,6 +1526,8 @@ void VTEPosition::setGpsPosOffset(const matrix::Vector3f &xyz, const bool gps_is
 	_gps_pos_is_offset = gps_is_offset;
 	_gps_pos_offset_ned.xyz = xyz;
 	_gps_pos_offset_ned.valid = xyz.isAllFinite();
+	// This is the freshness of the current attitude correction, not the GNSS sample time.
+	// Using current attitude remains an approximation while the vehicle rotates during GNSS latency.
 	_gps_pos_offset_ned.timestamp = nowUs();
 }
 
