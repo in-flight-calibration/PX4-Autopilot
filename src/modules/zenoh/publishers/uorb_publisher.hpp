@@ -42,16 +42,19 @@
 #pragma once
 
 #include "zenoh_publisher.hpp"
+#include <px4_platform_common/time.h>
 #include <uORB/Subscription.hpp>
 #include <dds_serializer.h>
 
 class uORB_Zenoh_Publisher : public Zenoh_Publisher
 {
 public:
-	uORB_Zenoh_Publisher(const orb_metadata *meta, const uint32_t *ops, int instance) :
+	uORB_Zenoh_Publisher(const orb_metadata *meta, const uint32_t *ops, int instance,
+			     void (*adjust_timestamps)(void *, int64_t)) :
 		Zenoh_Publisher(),
 		_uorb_meta{meta},
-		_cdr_ops(ops)
+		_cdr_ops(ops),
+		_adjust_timestamps(adjust_timestamps)
 	{
 		if (instance <= 0) { // default (<0) or =0
 			_uorb_sub = orb_subscribe(meta); // orb_subscribe subscribes to the 0th/first instance by default
@@ -74,8 +77,21 @@ public:
 		}
 
 #endif
-		uint8_t data[_uorb_meta->o_size];
+		alignas(uint64_t) uint8_t data[_uorb_meta->o_size];
 		orb_copy(_uorb_meta, _uorb_sub, data);
+
+		if (_adjust_timestamps) {
+			timespec realtime {};
+
+			if (px4_clock_gettime(CLOCK_REALTIME, &realtime) != 0) {
+				return _Z_ERR_GENERIC;
+			}
+
+			// Like uXRCE-DDS, shift only the outgoing copy into the ROS clock domain.
+			const int64_t time_offset_us = static_cast<int64_t>(ts_to_abstime(&realtime))
+						       - static_cast<int64_t>(hrt_absolute_time());
+			_adjust_timestamps(data, time_offset_us);
+		}
 
 		uint8_t buf[_uorb_meta->o_size + 4 + CDR_SAFETY_MARGIN];
 		memcpy(buf, ros2_header, sizeof(ros2_header));
@@ -118,4 +134,5 @@ private:
 	const orb_metadata *_uorb_meta;
 	orb_sub_t _uorb_sub{ORB_SUB_INVALID};
 	const uint32_t *_cdr_ops;
+	void (*_adjust_timestamps)(void *, int64_t);
 };

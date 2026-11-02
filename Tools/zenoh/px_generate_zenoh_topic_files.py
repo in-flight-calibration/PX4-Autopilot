@@ -154,12 +154,20 @@ def generate_topics_list_file_from_files(files, outputdir, template_filename, te
 
     topics = []
     datatypes_with_topics = dict()
+    timestamp_fields = dict()
     for msg_filename in files:
         datatype = re.sub(r'(?<!^)(?=[A-Z])', '_', os.path.basename(msg_filename)).lower().replace(".msg","")
         datatypes_with_topics[datatype] = get_topics(msg_filename)
         topics.extend(datatypes_with_topics[datatype])
+        msg_context = genmsg.msg_loader.MsgContext.create_default()
+        full_type_name = genmsg.gentools.compute_full_type_name('px4_msgs', os.path.basename(msg_filename))
+        spec = genmsg.msg_loader.load_msg_from_file(msg_context, msg_filename, full_type_name)
+        timestamp_fields[datatype] = [
+            field.name for field in spec.parsed_fields()
+            if field.type == 'uint64' and field.name in ('timestamp', 'timestamp_sample')
+        ]
 
-    tl_globals = {"msgs": filenames, "topics": topics, "datatypes": datatypes, "full_base_names": full_base_names, "rihs01_hashes": rihs01_hashes, "datatypes_with_topics": datatypes_with_topics}
+    tl_globals = {"msgs": filenames, "topics": topics, "datatypes": datatypes, "full_base_names": full_base_names, "rihs01_hashes": rihs01_hashes, "datatypes_with_topics": datatypes_with_topics, "timestamp_fields": timestamp_fields}
     tl_template_file = os.path.join(templatedir, template_filename)
     tl_out_file = os.path.join(outputdir, template_filename.replace(".em", ""))
 

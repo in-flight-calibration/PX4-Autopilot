@@ -101,6 +101,14 @@ const orb_metadata* @(topic_name)_topic_meta[@(len(topic_names))] = {
 @[for topic_name_inst in topic_names]@
 	ORB_ID(@(topic_name_inst)),
 @[end for]};
+
+static void @(topic_name)_adjust_timestamps(void *data, int64_t time_offset)
+{
+	auto &topic = *static_cast<px4_msgs_msg_@(topic_dict[topic_name]) *>(data);
+@[for field_name in timestamp_fields[topic_name]]@
+	topic.@(field_name) += time_offset;
+@[end for]@
+}
 #endif
 @[end for]
 
@@ -110,6 +118,7 @@ typedef struct {
 	const uint8_t *hash;
 	const orb_metadata** orb_topic;
 	const uint8_t orb_topics_size;
+	void (*adjust_timestamps)(void *, int64_t);
 } UorbPubSubTopicBinder;
 
 const UorbPubSubTopicBinder _topics[ZENOH_PUBSUB_COUNT] {
@@ -127,16 +136,18 @@ topic_names = datatypes_with_topics[topic_name]
 		  @(topic_dict[topic_name])_hash,
 		  @(topic_name)_topic_meta,
 		  @(len(topic_names)),
+		  @(topic_name)_adjust_timestamps,
 		},
 #endif
 @[end for]
 };
 
-uORB_Zenoh_Publisher* genPublisher(const orb_metadata *meta, int instance) {
+uORB_Zenoh_Publisher* genPublisher(const orb_metadata *meta, int instance, bool sync_timestamps) {
     for (auto &pub : _topics) {
         for(int i = 0; i < pub.orb_topics_size; i++) {
             if(pub.orb_topic[i]->o_id == meta->o_id) {
-                return new uORB_Zenoh_Publisher(meta, pub.ops, instance);
+                return new uORB_Zenoh_Publisher(meta, pub.ops, instance,
+                                                sync_timestamps ? pub.adjust_timestamps : nullptr);
             }
         }
     }
@@ -144,11 +155,12 @@ uORB_Zenoh_Publisher* genPublisher(const orb_metadata *meta, int instance) {
 }
 
 
-uORB_Zenoh_Publisher* genPublisher(const char *name, int instance) {
+uORB_Zenoh_Publisher* genPublisher(const char *name, int instance, bool sync_timestamps) {
     for (auto &pub : _topics) {
         for(int i = 0; i < pub.orb_topics_size; i++) {
             if(strcmp(pub.orb_topic[i]->o_name, name) == 0) {
-                return new uORB_Zenoh_Publisher(pub.orb_topic[i], pub.ops, instance);
+                return new uORB_Zenoh_Publisher(pub.orb_topic[i], pub.ops, instance,
+                                                sync_timestamps ? pub.adjust_timestamps : nullptr);
             }
         }
     }

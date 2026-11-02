@@ -446,6 +446,8 @@ int ZENOH::setupTopics(px4_pollfd_struct_t *pfds)
 		global_opts.reliability = (z_reliability_t)_zenoh_pub_rel.get();
 #endif
 
+		const bool sync_timestamps = _zenoh_synct.get() > 0;
+
 		for (i = 0; i < _pub_count; i++) {
 
 #ifdef CONFIG_ZENOH_PUB_OPTION_OVERRIDE
@@ -459,7 +461,7 @@ int ZENOH::setupTopics(px4_pollfd_struct_t *pfds)
 
 			if (_config.getPublisherMapping(topic, type, &instance)) {
 #endif
-				_zenoh_publishers[i] = genPublisher(type, instance);
+				_zenoh_publishers[i] = genPublisher(type, instance, sync_timestamps);
 				const uint8_t *rihs_hash = getRIHS01_Hash(type);
 
 				if (rihs_hash && _zenoh_publishers[i] != 0 &&

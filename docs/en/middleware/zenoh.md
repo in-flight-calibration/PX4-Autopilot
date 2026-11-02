@@ -156,6 +156,11 @@ Zenoh publisher behaviour can be controlled through global PX4 parameters:
 
 These are applied to all Zenoh publishers.
 
+If `ZENOH_SYNCT` is enabled (default), outgoing `timestamp` and `timestamp_sample` fields are converted to microseconds since the Unix epoch, using the offset between PX4's monotonic clock and `CLOCK_REALTIME`, similarly to uXRCE-DDS timestamp adjustment.
+The message definitions and internal uORB timestamps are unchanged.
+In SITL, this uses the host clock and matches ROS 2 wall-clock timestamps (not `/clock` simulation time).
+On hardware, the realtime clock must first be set to UTC, and separate hosts must have synchronised clocks; Zenoh does not perform clock synchronisation.
+
 If `CONFIG_ZENOH_PUB_OPTION_OVERRIDE=y`, individual publishers can override one or more global publisher options.
 Default configuration [dds_topics.yaml](../middleware/dds_topics.md) already provides overrides for several publishers.
 Individual publisher options can be overridden through the mapping configuration shown in the next section

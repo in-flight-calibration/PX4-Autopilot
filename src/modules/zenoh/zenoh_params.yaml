@@ -58,3 +58,14 @@ parameters:
         6: DataLow
         7: Background
       reboot_required: true
+    ZENOH_SYNCT:
+      description:
+        short: Enable Zenoh timestamp conversion
+        long: |
+          When enabled, outgoing timestamp and timestamp_sample fields are
+          converted from the PX4 monotonic clock to the system realtime clock
+          (microseconds since the Unix epoch), like UXRCE_DDS_SYNCT.
+          The realtime clock must be set (e.g. via NTP or SITL host clock).
+      type: boolean
+      default: 1
+      reboot_required: true
